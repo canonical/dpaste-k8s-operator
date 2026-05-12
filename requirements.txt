@@ -1,0 +1,16 @@
+# Runtime dependencies for the rock (from setup.cfg install_requires, test packages excluded)
+# Django and core
+django>=3.2
+pygments<=2.11.2
+django-staticinline>=1.0
+django-csp>=3.6
+dj_database_url>=0.5.0
+ratelimiter>=1.2
+
+# Additional lexers
+jsx-lexer>=0.0.8
+mistune>=3.0.0
+docutils
+
+# Production database adapter
+psycopg2-binary>=2.9.6

@@ -1,0 +1,51 @@
+# This file configures Charmcraft.
+# See https://juju.is/docs/sdk/charmcraft-config for guidance.
+
+name: dpaste
+
+type: charm
+
+bases:
+  - build-on:
+    - name: ubuntu
+      channel: "22.04"
+    run-on:
+    - name: ubuntu
+      channel: "22.04"
+
+summary: A Django-based pastebin for text and code.
+
+description: |
+  dpaste is a well-designed, open-source pastebin supporting syntax
+  highlighting for 100+ languages. Built with Django and deployable on
+  Kubernetes-backed Juju models. Configuration is fully driven by
+  environment variables.
+
+extensions:
+  - django-framework
+
+# Extension already provides (do not re-declare):
+#   ingress          (required)
+#   grafana-dashboard (optional)
+#   metrics-endpoint  (optional)
+#   logging           (optional)
+
+requires:
+  postgresql:
+    interface: postgresql_client
+    optional: false
+    limit: 1
+  oauth:
+    interface: oauth
+    optional: true
+    limit: 1
+
+config:
+  options:
+    app-url-prefix:
+      type: string
+      default: ""
+      description: >
+        URL prefix for serving dpaste under a sub-path (maps to URL_PREFIX
+        env var read by dpaste.settings.base). Leave empty for root hosting.
+

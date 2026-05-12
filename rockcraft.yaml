@@ -1,0 +1,90 @@
+# See https://documentation.ubuntu.com/rockcraft/1.18.0/reference/extensions/django-framework
+# For questions or help, visit https://matrix.to/#/#12-factor-charms:ubuntu.com
+
+name: dpaste
+# see https://documentation.ubuntu.com/rockcraft/1.18.0/explanation/bases/
+# for more information about bases and using 'bare' bases for chiselled rocks
+base: bare
+build-base: ubuntu@24.04
+version: "3.5"
+summary: A Django-based pastebin for text and code.
+description: |
+  dpaste is a well-designed, open-source pastebin that supports syntax
+  highlighting for 100+ languages via Pygments. It is built with Django
+  and is suitable for self-hosted deployments on Kubernetes-backed Juju
+  models. Configuration is fully driven by environment variables.
+platforms:
+  amd64:
+
+# Layout adaptation note:
+# dpaste uses a flat package layout: the repo root IS the Django project
+# directory and dpaste/ is the Python package. The django-framework extension
+# expects <project>/<project>/wsgi.py, so a minimal stub at
+# dpaste/dpaste/wsgi.py satisfies that check. At runtime the gunicorn service
+# uses dpaste.wsgi:application from the installed Python package.
+#
+# DJANGO_SETTINGS_MODULE must be set to dpaste.settings.base by the charm
+# (dpaste.settings.local is excluded from the installed package).
+
+extensions:
+  - django-framework
+
+parts:
+  # Build the SCSS and JS assets before the Python package is installed.
+  # MANIFEST.in includes dpaste/static/*, so pip install picks them up.
+  frontend:
+    plugin: nil
+    source: .
+    build-packages:
+      - nodejs
+      - npm
+    override-build: |
+      npm ci --ignore-scripts
+      node_modules/.bin/sass --no-source-map --style=compressed \
+        client/scss/dpaste.scss:dpaste/static/dpaste.css
+      node_modules/.bin/uglifyjs \
+        --compress="drop_console=true,ecma=6" \
+        --mangle="toplevel" \
+        --output=dpaste/static/dpaste.js \
+        client/js/dpaste.js
+      mkdir -p "$CRAFT_PART_INSTALL/dpaste/static"
+      cp dpaste/static/dpaste.css dpaste/static/dpaste.js \
+        "$CRAFT_PART_INSTALL/dpaste/static/"
+    stage:
+      - dpaste/static/dpaste.css
+      - dpaste/static/dpaste.js
+
+  # Extend the extension's dependency part to:
+  # 1. inject compiled frontend assets before pip install so they are bundled
+  # 2. run collectstatic after install to pre-populate /django/app/staticfiles
+  django-framework/dependencies:
+    after:
+      - frontend
+    build-packages:
+      - python3.12-venv
+    override-build: |
+      cp "$CRAFT_STAGE/dpaste/static/dpaste.css" dpaste/static/
+      cp "$CRAFT_STAGE/dpaste/static/dpaste.js" dpaste/static/
+      craftctl default
+      # After craftctl default the rockcraft python plugin removes pyvenv.cfg and
+      # relinks the interpreter, breaking sys.path. Set PYTHONPATH explicitly so
+      # collectstatic finds the packages that pip installed into the part install dir.
+      PYTHONPATH="$CRAFT_PART_INSTALL/lib/python3.12/site-packages" \
+      DJANGO_SETTINGS_MODULE=dpaste.settings.base \
+      SECRET_KEY=build-time-placeholder \
+      STATIC_ROOT="$CRAFT_PART_INSTALL/django/app/staticfiles" \
+        python3.12 manage.py collectstatic --noinput
+
+# Override the gunicorn entry point to use the env-bridging wsgi stub at
+# dpaste/dpaste/wsgi.py instead of the upstream dpaste/wsgi.py.
+# The stub sets the correct DJANGO_SETTINGS_MODULE default and bridges
+# paas-charm DJANGO_* / POSTGRESQL_DB_* names to what dpaste.settings.base reads.
+services:
+  django:
+    override: replace
+    command: /bin/python3 -m gunicorn -c /django/gunicorn.conf.py 'dpaste.dpaste.wsgi:application'
+      -k [ sync ]
+    startup: enabled
+    after:
+      - statsd-exporter
+    user: _daemon_
