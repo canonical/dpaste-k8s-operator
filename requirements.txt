@@ -1,7 +1,7 @@
 # Runtime dependencies for the rock (from setup.cfg install_requires, test packages excluded)
 # Django and core
 django>=3.2
-pygments<=2.11.2
+pygments<=2.20.0
 django-staticinline>=1.0
 django-csp>=3.6
 dj_database_url>=0.5.0
